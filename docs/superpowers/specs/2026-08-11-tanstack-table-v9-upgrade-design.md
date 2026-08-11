@@ -61,8 +61,7 @@ and sort plugins and owns the following application behavior:
 
 - Headers toggle sorting and display ascending, descending, or unsorted icons.
 - A filter menu keeps values pending until Save, displays committed filters as
-  removable chips, and derives select options from rows before the column's own
-  filter is applied.
+  removable chips, and derives select options from faceted rows.
 - Custom filters implement case-insensitive text matching, overlapping list
   matching, inclusive numeric ranges, and inclusive date ranges.
 - Custom sort functions cover strings, formatted integers, booleans, enum
@@ -74,7 +73,11 @@ and sort plugins and owns the following application behavior:
   normal visible cells.
 
 The migration will preserve these contracts rather than replace them with new
-TanStack features.
+TanStack features, with one deliberate correction: v8 and v9 faceting will
+derive options from rows matching all other active filters while excluding the
+column's own filter. V7's option source depended on filter insertion order.
+Native faceting makes option lists deterministic without changing the final
+intersection of committed filters.
 
 ## V7 to V8 Checkpoint
 
@@ -91,8 +94,10 @@ The first implementation checkpoint will use the native v8 API:
 - Application filter-renderer metadata is typed and retained on column
   definitions.
 
-Faceting is included because the filter menu needs the equivalent of v7's
-per-column `preFilteredRows` when deriving selectable values.
+Faceting is included because the filter menu needs per-column rows when deriving
+selectable values. Only columns with application filter-renderer metadata may
+appear in the filter menu; TanStack's general `getCanFilter()` result is not
+sufficient because accessor columns are filterable by default.
 
 ## V8 to V9 Checkpoint
 
@@ -114,18 +119,34 @@ The implementation will use v9's default full-state subscription. It will not
 adopt atoms, `table.Subscribe`, `createTableHook`, `stockFeatures`, or optional
 rendering helpers because those changes are not needed to preserve behavior.
 
+The shared `Table` remains generic in one row-data type used consistently by
+its data, columns, row links, selection callback, and collapsed renderer. The
+application metadata contract is structural and independent of the final v9
+feature type, so the feature object can be defined before deriving Row, Column,
+and ColumnDef aliases. Custom filters and sorters may require the existing raw
+`values` record, but unfiltered tables are not required to carry that field.
+
 ## Testing Strategy
 
 Before changing dependencies, focused tests will exercise the shared wrapper's
 observable behavior under v7:
 
 - render headers and cells;
+- omit the Filter button when no column has application filter metadata;
 - sort a column in both directions;
-- stage, save, display, and remove a filter;
+- stage multiple filters without applying either early, save both, clear a
+  committed filter through Save, display active chips, and remove a chip;
+- keep rendered accessor values distinct from the raw values used for custom
+  sorting, filtering, and selectable options;
 - render row links and invoke row selection;
 - render collapsed rows; and
 - preserve custom filter and sorting function semantics where component tests
   do not directly cover them.
+
+The v8 checkpoint adds a focused native-faceting regression: all other filters
+narrow a column's selectable options, the column's own filter does not remove
+its alternatives, and option values come from raw row data rather than rendered
+accessors.
 
 The same focused tests must pass at the v8 and v9 checkpoints. Each checkpoint
 must also pass the complete client test suite, lint/type checks, and production
