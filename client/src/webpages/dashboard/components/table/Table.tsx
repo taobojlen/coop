@@ -52,7 +52,7 @@ export default function Table<TData extends Record<string, any>>(
     columns,
     data: [...data],
     defaultColumn: {
-      cell: ({ getValue }) => getValue() as ReactNode,
+      cell: ({ getValue }): ReactNode => getValue() as ReactNode,
     },
   });
   const rows = table.getRowModel().rows;
