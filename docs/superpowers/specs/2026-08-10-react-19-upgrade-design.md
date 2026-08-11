@@ -31,7 +31,7 @@ The React 18.2 baseline tests pass but repeatedly warn that `ReactDOM.render` is
 
 `react-query` is instantiated only in `client/src/index.tsx`; no client source consumes its context or APIs. Its provider and dependency will be removed rather than migrated.
 
-`react-table` 7.8.0 is the sole deliberate peer-range exception. It does not declare React 19 support, but its headless hook implementation has no identified dependency on APIs removed in React 19. Coop uses its v7 API across ten files, so migration to current TanStack Table is a separate, higher-risk refactor. The React 19 work will verify existing table behavior as far as the current automated suite permits and explicitly document the remaining unsupported peer range.
+The supported TanStack Table v9 migration is the lower layer of this stack. The React 19 work consumes that prerequisite so the combined client uses `@tanstack/react-table` without retaining the unsupported `react-table` v7 package or a peer-range exception.
 
 ## Migration Process
 
@@ -50,7 +50,7 @@ The runtime codemod is expected to make few or no changes because the client alr
 The final worktree must pass:
 
 - `npm ci` in `client` from the regenerated lockfile;
-- `npm ls react react-dom` to detect duplicate or invalid core React installations;
+- `npm ls react react-dom @types/react @types/react-dom @tanstack/react-table @tanstack/table-core @tanstack/react-store --all` to require a valid React and TanStack Table installation tree without duplicate core React installations;
 - `npm run lint` in `client`;
 - `npm run test:prepush` in `client`;
 - `npm run build` in `client`;
@@ -64,5 +64,5 @@ The final worktree must pass:
 - **Test renderer behavior changes:** upgrade React Testing Library before React 19 and use the existing 204-test suite to detect semantic changes from concurrent rendering.
 - **Dependency API drift:** prefer compatible releases in current major lines and make source changes only when checks identify a real incompatibility.
 - **Drag-and-drop regression:** use the maintained API-compatible fork and verify the routing rules component through available tests and browser smoke testing.
-- **Stale table peer metadata:** retain `react-table` only as an explicit temporary exception and keep a full table migration out of this upgrade.
+- **Table compatibility:** consume the supported TanStack Table v9 migration from the lower stack layer and verify the combined React and table dependency tree.
 - **Install reproducibility:** never hand-edit the lockfile and verify it with a clean `npm ci`.

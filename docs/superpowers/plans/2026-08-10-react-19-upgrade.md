@@ -18,7 +18,7 @@
 - Never hand-edit `client/package-lock.json`; regenerate it with npm.
 - Never use `--legacy-peer-deps`, `--force`, or an npm override to hide peer incompatibility.
 - Preserve current UI and data behavior; do not adopt unrelated React 19 features.
-- Retain `react-table@7.8.0` as the sole documented React peer-range exception; its API migration is out of scope.
+- Require the supported TanStack Table v9 migration as the lower stack layer; do not retain `react-table`, `@types/react-table`, or a React peer-range exception.
 - Treat the baseline five audit findings (two moderate and three high) as pre-existing; do not introduce additional findings.
 - All added or upgraded direct packages use MIT or Apache-2.0 licenses, compatible with Coop's Apache-2.0 license.
 - Add `Co-Authored-By: Amp` to agent-authored commits.
@@ -125,7 +125,7 @@ Co-Authored-By: Amp"
 **Interfaces:**
 
 - Consumes: React 18.3 and React Testing Library 16 from Task 1.
-- Produces: React-facing dependencies whose declared peers include React 19, except for the approved `react-table` v7 exception.
+- Produces: React-facing dependencies whose declared peers include React 19, building on the supported TanStack Table v9 migration in the lower stack layer.
 
 - [ ] **Step 1: Replace archived and unused packages**
 
@@ -264,7 +264,7 @@ npm install --save-exact react@19.2.8 react-dom@19.2.8
 npm install --save-dev --save-exact @types/react@19.2.18 @types/react-dom@19.2.4
 ```
 
-Expected: npm may warn that `react-table@7.8.0` declares peers only through React 18. It must not fail resolution, install a second React version, or report another direct unsupported React peer.
+Expected: ordinary npm resolution succeeds because the lower stack layer supplies `@tanstack/react-table` v9. It must not require force or legacy peer flags, install a second React version, or report an unsupported React peer.
 
 - [ ] **Step 2: Demonstrate the React 19 type migration is needed**
 
@@ -389,12 +389,12 @@ Run from `client`:
 npm ci 2>&1 | tee /tmp/coop-react-19-npm-ci.log
 ```
 
-Expected: exit 0 without `ERESOLVE`, `--legacy-peer-deps`, or lockfile mutation. A peer warning attributable only to `react-table@7.8.0` is the approved exception.
+Expected: exit 0 without `ERESOLVE`, `--legacy-peer-deps`, `--force`, peer warnings, or lockfile mutation.
 
 - [ ] **Step 2: Inspect the installed React graph**
 
 ```bash
-npm ls react react-dom --all 2>&1 | tee /tmp/coop-react-19-tree.log || true
+npm ls react react-dom @types/react @types/react-dom @tanstack/react-table @tanstack/table-core @tanstack/react-store --all 2>&1 | tee /tmp/coop-react-19-tree.log
 node - <<'NODE'
 const fs = require('node:fs');
 const path = require('node:path');
@@ -422,7 +422,7 @@ if (versions.length !== 1 || versions[0] !== '19.2.8') process.exit(1);
 NODE
 ```
 
-Expected: every installed `react` package resolves to 19.2.8. Review `/tmp/coop-react-19-tree.log`; any invalid peer other than `react-table@7.8.0` blocks completion.
+Expected: every installed `react` package resolves to 19.2.8, TanStack Table resolves to 9.1.2, and `/tmp/coop-react-19-tree.log` reports a valid tree with no `react-table` or `@types/react-table` package.
 
 - [ ] **Step 3: Compare the security result with the baseline**
 
