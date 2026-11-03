@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { vi } from 'vitest';
 
 import { UserPermission } from '../../services/userManagementService/index.js';
@@ -149,9 +150,23 @@ describe('updateNcmecOrgSettings media review policy', () => {
 });
 
 describe('NCMEC read surfaces require VIEW_CHILD_SAFETY_DATA', () => {
+  const unrelatedPermissions = Object.values(UserPermission).filter(
+    (permission) => permission !== UserPermission.VIEW_CHILD_SAFETY_DATA,
+  );
+  const report = {
+    id: 'report-1',
+    userItemTypeId: 'user-type-1',
+    additionalFiles: [],
+    reportedMessages: ['m-1'],
+  };
+  const itemType = { id: 'user-type-1', kind: 'USER' };
+  const threads = [
+    { threadId: 'thread-1', threadTypeId: 'thread-type-1', messages: [] },
+  ];
+
   function makeReadCtx(permissions: readonly UserPermission[] | null) {
-    const getNcmecReportById = vi.fn(async () => null);
-    const getNcmecMessages = vi.fn(async () => [] as unknown[]);
+    const getNcmecReportById = vi.fn(async () => report);
+    const getNcmecMessages = vi.fn(async () => threads);
     const ctx = {
       getUser: () =>
         permissions === null
@@ -161,20 +176,41 @@ describe('NCMEC read surfaces require VIEW_CHILD_SAFETY_DATA', () => {
               orgId: 'org-1',
               getPermissions: () => permissions,
             },
-      services: { NcmecService: { getNcmecReportById, getNcmecMessages } },
+      services: {
+        NcmecService: { getNcmecReportById, getNcmecMessages },
+        ModerationConfigService: { getItemType: vi.fn(async () => itemType) },
+      },
     };
     return { ctx, getNcmecReportById, getNcmecMessages };
   }
 
   describe('Query.ncmecReportById', () => {
-    it('throws forbiddenError when the caller lacks VIEW_CHILD_SAFETY_DATA', async () => {
-      const { ctx, getNcmecReportById } = makeReadCtx([
-        UserPermission.VIEW_MRT,
-      ]);
-      await expect(
-        Query.ncmecReportById({}, { reportId: 'report-1' }, ctx),
-      ).rejects.toThrow('VIEW_CHILD_SAFETY_DATA permission required');
-      expect(getNcmecReportById).not.toHaveBeenCalled();
+    it('requires VIEW_CHILD_SAFETY_DATA regardless of unrelated permissions', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.subarray(unrelatedPermissions),
+          async (permissions) => {
+            const denied = makeReadCtx(permissions);
+            await expect(
+              Query.ncmecReportById({}, { reportId: 'report-1' }, denied.ctx),
+            ).rejects.toThrow('VIEW_CHILD_SAFETY_DATA permission required');
+            expect(denied.getNcmecReportById).not.toHaveBeenCalled();
+
+            const allowed = makeReadCtx([
+              ...permissions,
+              UserPermission.VIEW_CHILD_SAFETY_DATA,
+            ]);
+            await expect(
+              Query.ncmecReportById({}, { reportId: 'report-1' }, allowed.ctx),
+            ).resolves.toEqual({ ...report, userItemType: itemType });
+            expect(allowed.getNcmecReportById).toHaveBeenCalledWith({
+              orgId: 'org-1',
+              reportId: 'report-1',
+            });
+          },
+        ),
+        { examples: [[[]], [unrelatedPermissions]] },
+      );
     });
 
     it('throws unauthenticatedError when there is no user', async () => {
@@ -184,28 +220,37 @@ describe('NCMEC read surfaces require VIEW_CHILD_SAFETY_DATA', () => {
       ).rejects.toThrow('User required.');
       expect(getNcmecReportById).not.toHaveBeenCalled();
     });
-
-    it('reaches the service when the caller has VIEW_CHILD_SAFETY_DATA', async () => {
-      const { ctx, getNcmecReportById } = makeReadCtx([
-        UserPermission.VIEW_CHILD_SAFETY_DATA,
-      ]);
-      await expect(
-        Query.ncmecReportById({}, { reportId: 'report-1' }, ctx),
-      ).resolves.toBeNull();
-      expect(getNcmecReportById).toHaveBeenCalledWith({
-        orgId: 'org-1',
-        reportId: 'report-1',
-      });
-    });
   });
 
   describe('Query.ncmecThreads', () => {
-    it('throws forbiddenError when the caller lacks VIEW_CHILD_SAFETY_DATA', async () => {
-      const { ctx, getNcmecMessages } = makeReadCtx([UserPermission.VIEW_MRT]);
-      await expect(
-        Query.ncmecThreads({}, { userId: 'user-9' }, ctx),
-      ).rejects.toThrow('VIEW_CHILD_SAFETY_DATA permission required');
-      expect(getNcmecMessages).not.toHaveBeenCalled();
+    it('requires VIEW_CHILD_SAFETY_DATA regardless of unrelated permissions', async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.subarray(unrelatedPermissions),
+          async (permissions) => {
+            const args = { userId: 'user-9', reportedMessages: ['m-1'] };
+            const denied = makeReadCtx(permissions);
+            await expect(
+              Query.ncmecThreads({}, args, denied.ctx),
+            ).rejects.toThrow('VIEW_CHILD_SAFETY_DATA permission required');
+            expect(denied.getNcmecMessages).not.toHaveBeenCalled();
+
+            const allowed = makeReadCtx([
+              ...permissions,
+              UserPermission.VIEW_CHILD_SAFETY_DATA,
+            ]);
+            await expect(
+              Query.ncmecThreads({}, args, allowed.ctx),
+            ).resolves.toEqual(threads);
+            expect(allowed.getNcmecMessages).toHaveBeenCalledWith(
+              'org-1',
+              'user-9',
+              ['m-1'],
+            );
+          },
+        ),
+        { examples: [[[]], [unrelatedPermissions]] },
+      );
     });
 
     it('throws unauthenticatedError when there is no user', async () => {
@@ -214,20 +259,6 @@ describe('NCMEC read surfaces require VIEW_CHILD_SAFETY_DATA', () => {
         Query.ncmecThreads({}, { userId: 'user-9' }, ctx),
       ).rejects.toThrow('User required.');
       expect(getNcmecMessages).not.toHaveBeenCalled();
-    });
-
-    it('reaches the service when the caller has VIEW_CHILD_SAFETY_DATA', async () => {
-      const { ctx, getNcmecMessages } = makeReadCtx([
-        UserPermission.VIEW_CHILD_SAFETY_DATA,
-      ]);
-      await expect(
-        Query.ncmecThreads(
-          {},
-          { userId: 'user-9', reportedMessages: ['m-1'] },
-          ctx,
-        ),
-      ).resolves.toEqual([]);
-      expect(getNcmecMessages).toHaveBeenCalledWith('org-1', 'user-9', ['m-1']);
     });
   });
 });
