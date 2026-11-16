@@ -1,34 +1,31 @@
+import { context, propagation, trace } from '@opentelemetry/api';
 import { getWebAutoInstrumentations } from '@opentelemetry/auto-instrumentations-web';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { AWSXRayPropagator } from '@opentelemetry/propagator-aws-xray';
 import { resourceFromAttributes } from '@opentelemetry/resources';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
+import { BatchSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 const FrontendTracer = async () => {
   const { ZoneContextManager } = await import('@opentelemetry/context-zone');
 
-  const provider = new WebTracerProvider({
+  const provider = new TracerProvider({
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: 'coop-ui',
     }),
     spanProcessors: [
-      new BatchSpanProcessor(
-        new OTLPTraceExporter({
+      new BatchSpanProcessor({
+        exporter: new OTLPTraceExporter({
           url: import.meta.env.VITE_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
         }),
-      ),
+      }),
     ],
   });
 
-  const contextManager = new ZoneContextManager();
-
-  provider.register({
-    contextManager,
-    propagator: new AWSXRayPropagator(),
-  });
+  trace.setGlobalTracerProvider(provider);
+  context.setGlobalContextManager(new ZoneContextManager().enable());
+  propagation.setGlobalPropagator(new AWSXRayPropagator());
 
   registerInstrumentations({
     tracerProvider: provider,

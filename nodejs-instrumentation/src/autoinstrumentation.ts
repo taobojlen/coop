@@ -37,7 +37,7 @@ import {
 } from '@opentelemetry/resources';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
@@ -87,15 +87,18 @@ const sdk = new NodeSDK({
   traceExporter: exporter,
   textMapPropagator: new AWSXRayPropagator(),
   spanProcessors: [
-    new BatchSpanProcessor(exporter, {
+    new BatchSpanProcessor({
+      exporter,
       maxExportBatchSize: 400,
       scheduledDelayMillis: 500,
       maxQueueSize: 4096,
     }),
   ],
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: new OTLPMetricExporter(),
-  }),
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter(),
+    }),
+  ],
   resource: defaultResource().merge(
     resourceFromAttributes({
       [ATTR_SERVICE_NAME]: serviceName,
